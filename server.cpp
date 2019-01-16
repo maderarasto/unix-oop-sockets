@@ -9,10 +9,11 @@ int main(int argc, char* argv[])
 {
     bool running = true;
     int clientCount = 0;
-    int maxClients = 1;
+    int maxClients = 2;
     
     printf("Creating socket for server...\n");
-    ServerSocket* serverSocket = new ServerSocket();
+    ServerSocket* serverSocket = new ServerSocket(1259);
+    serverSocket->startListening();
     ClientSocket* client = nullptr; 
 
     while (running)
@@ -21,7 +22,7 @@ int main(int argc, char* argv[])
         
         if (clientCount < maxClients)
         {
-            int newSocketFD = serverSocket->onAccept();
+            int newSocketFD = serverSocket->getPendingFD();
             if (newSocketFD >= 0)
             {
                 printf("New connection established...\n");
@@ -32,6 +33,7 @@ int main(int argc, char* argv[])
             if (clientCount == maxClients)
             {
                 printf("Server socket is stopping to listen...\n");
+                serverSocket->stopListening();
             }
         }
 
@@ -54,8 +56,9 @@ int main(int argc, char* argv[])
 
     // cleaning
     printf("Closing sockets...\n");
-    client->disable();
     serverSocket->disable();
+    client->disable();
+
     delete client;
     delete serverSocket;
     

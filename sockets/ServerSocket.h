@@ -13,26 +13,38 @@
 #include <stdexcept>
 #include <cstring>
 #include <cstdio>
+#include <vector>
+#include <thread>
+#include <mutex>
 
 class ServerSocket
 {
 public:
-    ServerSocket();
+    ServerSocket(int port);
     ~ServerSocket();
 
-    int onAccept();
+    int getPendingFD();
+
+    void startListening();
+    void stopListening();
     void disable();
 
 private: 
-    void updateBlockingFlags(bool blocking);
+    void handleListening();
 
 public:
-    static const int ServerPort;
     static const int QueueSize;
 
 private:
+    int mPort;
     int mSocketFD;
     sockaddr_in mAddressInfo;
+    std::vector<int> mPendingFDs;
+
+    bool mListening;
+    std::thread* mListenerThread;
+    std::mutex mMutex;
+
 };
 
 #endif // SERVERSOCKET_H

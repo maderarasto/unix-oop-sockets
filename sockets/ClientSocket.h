@@ -22,25 +22,20 @@ public:
     ClientSocket(int socketFD);
     ~ClientSocket();
 
-    bool getBlocking() const;
-    void setBlocking(bool blocking);
+    bool isConnected() const;
 
     void connectTo(std::string hostname, int port);
     bool receive(std::string& message);
     void send(std::string& message);
     void disable();
 
-private:
-    void updateBlockingFlags();
-
 public:
     static const int SmallBuffer;
     static const int BigBuffer;
 
 private:
-    // Informacie o sockete
     int mSocketFD;
-    bool mBlocking;
+    bool mConnected;
     sockaddr_in mServerAddress;
 };
 

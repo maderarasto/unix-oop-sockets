@@ -1,14 +1,16 @@
 #include "ServerSocket.h"
 
-const int ServerSocket::ServerPort = 1259;
 const int ServerSocket::QueueSize = 4;
 
-ServerSocket::ServerSocket()
+ServerSocket::ServerSocket(int port) :
+    mListenerThread(nullptr)
 {
+    mPort = port;
+    
     bzero((char*) &mAddressInfo, sizeof(mAddressInfo));
     mAddressInfo.sin_family = AF_INET;
     mAddressInfo.sin_addr.s_addr = INADDR_ANY;
-    mAddressInfo.sin_port = ServerSocket::ServerPort;
+    mAddressInfo.sin_port = port;
 
     // Vytvaranie socketu a ziskavanie deskriptora novo vytvoreneho socketu
     mSocketFD = socket(mAddressInfo.sin_family, SOCK_STREAM, 0);
@@ -21,63 +23,70 @@ ServerSocket::ServerSocket()
     {
         throw std::runtime_error("Binding address to socket failed!");
     }
-
-    updateBlockingFlags(false);    
 }
 
 ServerSocket::~ServerSocket()
 {
+    if (mListenerThread->joinable())
+        mListenerThread->join();
+    
+    delete mListenerThread;
 }
 
-int ServerSocket::onAccept()
-{    
-    fd_set acceptSet;
-    int newSocketFD = -1;
-    sockaddr_in clientAddressInfo;
-    socklen_t clientLength = sizeof(clientAddressInfo);
+int ServerSocket::getPendingFD()
+{
+    int socketFD = -1;
+
+    mMutex.lock();
     
-    FD_ZERO(&acceptSet);
-    FD_SET(mSocketFD, &acceptSet);
-    listen(mSocketFD, ServerSocket::QueueSize);
-    
-    if (select(mSocketFD + 1, &acceptSet, NULL, NULL, NULL))
+    if (mPendingFDs.size() > 0)
     {
-        if (FD_ISSET(mSocketFD, &acceptSet))
-        {
-            newSocketFD = accept(mSocketFD, (sockaddr*) &clientAddressInfo, &clientLength);
-            if (newSocketFD < 0)
-            {
-                throw std::runtime_error("Accepting a new connection failed!");
-            }       
-        }
+        socketFD = mPendingFDs.front();
+        mPendingFDs.erase(mPendingFDs.begin());
     }
 
-    return newSocketFD;
+    mMutex.unlock();
+
+    return socketFD;
+}
+
+void ServerSocket::startListening()
+{
+    mListening = true;
+    mListenerThread = new std::thread(&ServerSocket::handleListening, this);
+}
+
+void ServerSocket::stopListening()
+{
+    mListening = false;
+    shutdown(mSocketFD, SHUT_RDWR);
+    close(mSocketFD);
 }
 
 void ServerSocket::disable()
 {
     printf("Closing a socket...\n");
-    updateBlockingFlags(true);
+    mListening = false;
+    shutdown(mSocketFD, SHUT_RDWR);
     close(mSocketFD);
 }
 
-void ServerSocket::updateBlockingFlags(bool blocking)
+void ServerSocket::handleListening()
 {
-    int flags = fcntl(mSocketFD, F_GETFL, 0);
+    listen(mSocketFD, QueueSize);
+    printf("Starting to listen on port %d...\n", mPort);
     
-    if (flags < 0)
+    while (mListening)
     {
-        throw std::runtime_error("Getting blocking flags failed!");
-    }
-    
-    if (blocking)
-        flags &= ~O_NONBLOCK;
-    else
-        flags |= O_NONBLOCK;
+        sockaddr_in addressInfo;
+        socklen_t addressLength = sizeof(addressInfo);
 
-    if (fcntl(mSocketFD, F_SETFL, flags) < 0)
-    {
-        throw std::runtime_error("Setting blocking flags failed!");
+        int socketFD = accept(mSocketFD, (sockaddr*) &addressInfo, &addressLength);
+        if (mListening && socketFD < 0)
+            throw std::runtime_error("Accepting a new connection failed!");
+
+        mMutex.lock();
+        mPendingFDs.push_back(socketFD);
+        mMutex.unlock();
     }
 }

@@ -13,12 +13,10 @@ int main(int argc, char* argv[])
     std::string message;
     
     ClientSocket* clientSocket = new ClientSocket();
-    clientSocket->setBlocking(false);
     clientSocket->connectTo(hostname, port);
 
-    message = "Hello from socket";
-    printf("Sending message: %s\n", message.c_str());
-    //std::getline(std::cin, message);
+    printf("message: ");
+    std::getline(std::cin, message);
 
     clientSocket->send(message);
     clientSocket->receive(message);

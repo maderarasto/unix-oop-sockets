@@ -5,14 +5,14 @@ const int ClientSocket::BigBuffer = 100;
 
 ClientSocket::ClientSocket()
 {
-    mBlocking = true;
+    mConnected = false;
     bzero((char*) &mServerAddress, sizeof(mServerAddress));
 }
 
 ClientSocket::ClientSocket(int socketFD)
 {
     mSocketFD = socketFD;
-    mBlocking = true;
+    mConnected = true;
     
 }
 
@@ -21,15 +21,9 @@ ClientSocket::~ClientSocket()
 
 }
 
-bool ClientSocket::getBlocking() const
+bool ClientSocket::isConnected() const
 {
-    return mBlocking;
-}
-
-void ClientSocket::setBlocking(bool blocking)
-{
-    mBlocking = blocking;
-    updateBlockingFlags();
+    return mConnected;
 }
 
 void ClientSocket::connectTo(std::string hostname, int port)
@@ -54,46 +48,23 @@ void ClientSocket::connectTo(std::string hostname, int port)
     {
         throw std::runtime_error("Connecting to a socket failed!");
     }
+
+    mConnected = true;
 }
 
 bool ClientSocket::receive(std::string& message)
 {   
-    fd_set readSet;
-    int receivedBytes;
-    char buffer[ClientSocket::BigBuffer];
-
-    FD_ZERO(&readSet);
-    FD_SET(mSocketFD, &readSet);
-
-    if (!mBlocking && select(mSocketFD + 1, &readSet, NULL, NULL, NULL) > 0)
+    char buffer[BigBuffer];
+    
+    bzero(buffer, BigBuffer);
+    int receivedBytes = read(mSocketFD, buffer, ClientSocket::BigBuffer - 1);
+    if (receivedBytes < 0)
     {
-        if (FD_ISSET(mSocketFD, &readSet))
-        {
-            bzero(buffer, ClientSocket::BigBuffer);
-            receivedBytes = read(mSocketFD, buffer, ClientSocket::BigBuffer - 1);
-            if (receivedBytes < 0)
-            {
-                throw std::runtime_error("Reading from the socket failed!");
-            }
-
-            // handle message
-            message = buffer;
-            return true;
-        }
-    } else if (mBlocking)
-    {
-        bzero(buffer, ClientSocket::BigBuffer);
-        receivedBytes = read(mSocketFD, buffer, ClientSocket::BigBuffer - 1);
-        if (receivedBytes < 0)
-        {
-            throw std::runtime_error("Reading from the socket failed!");
-        }
-
-        message = buffer;
-        return true;
+        throw std::runtime_error("Reading from the socket failed!");
     }
 
-    return false;
+    message = buffer;
+    return true;
 }
 
 void ClientSocket::send(std::string& message)
@@ -108,25 +79,7 @@ void ClientSocket::send(std::string& message)
 
 void ClientSocket::disable()
 {
-    setBlocking(true);
+    mConnected = false;
+    shutdown(mSocketFD, SHUT_RDWR);
     close(mSocketFD);
-}
-
-void ClientSocket::updateBlockingFlags()
-{
-    int flags = fcntl(mSocketFD, F_GETFL, 0);
-    if (flags < 0)
-    {
-        throw std::runtime_error("Getting blocking flags failed!");
-    }
-
-    if (mBlocking)
-        flags &= ~O_NONBLOCK;
-    else 
-        flags |= O_NONBLOCK;
-
-    if (fcntl(mSocketFD, F_SETFL, flags) < 0)
-    {
-        throw std::runtime_error("Setting blocking flags failed!");
-    }
 }
